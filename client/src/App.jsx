@@ -4,6 +4,7 @@ function App() {
   const [statusMessage, setStatusMessage] = useState('');
   const [statusColor, setStatusColor] = useState('var(--primary-color)');
   const pollIntervalRef = useRef(null);
+  const statusTimeoutRef = useRef(null);
 
   const cleanupPolling = () => {
     if (pollIntervalRef.current) {
@@ -12,20 +13,35 @@ function App() {
     }
   };
 
+  const cleanupStatusClearTimer = () => {
+    if (statusTimeoutRef.current) clearTimeout(statusTimeoutRef.current);
+    statusTimeoutRef.current = null;
+  }
+
+  const startStatusClearTimer = () => {
+    cleanupStatusClearTimer();
+    statusTimeoutRef.current = setTimeout(() => setStatusMessage(''), 5000);
+  };
+
   useEffect(() => {
-    return () => cleanupPolling();
+    return () => {
+      cleanupPolling();
+      cleanupStatusClearTimer();
+    };
   }, []);
 
   const triggerShutdown = async () => {
     if (!confirm('确定要关机吗？请确保你已经进行了警告且警告无效')) return;
 
+    cleanupStatusClearTimer();
     setStatusMessage('正在关机...');
     setStatusColor('var(--primary-color)');
 
     try {
       const res = await fetch('/api/shutdown', { method: 'POST' });
       const data = await res.json();
-      setStatusMessage(data.message || '关机命令已发送。');
+      setStatusMessage(data.message || '关机命令已发送, 5秒后关机, 该服务将在关机后停止响应');
+      startStatusClearTimer();
     } catch (err) {
       setStatusMessage('发送关机命令失败。');
       setStatusColor('var(--danger-color)');
@@ -35,6 +51,7 @@ function App() {
 
   const sendWarning = async () => {
     cleanupPolling();
+    cleanupStatusClearTimer();
 
     setStatusMessage('正在发送警告...');
     setStatusColor('var(--primary-color)');
@@ -63,13 +80,16 @@ function App() {
             setStatusMessage('✅对方已收到');
             setStatusColor('green');
             cleanupPolling();
+            startStatusClearTimer();
           } else if (statusData.state === 'dismissed') {
             setStatusMessage('❌通知被关闭或忽略');
             setStatusColor('orange');
             cleanupPolling();
+            startStatusClearTimer();
           } else if (statusData.state === 'timeout') {
             setStatusMessage('⌛通知超时');
             cleanupPolling();
+            startStatusClearTimer();
           }
         } catch (e) {
           console.error('Status poll error:', e);
