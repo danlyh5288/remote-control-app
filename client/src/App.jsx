@@ -48,7 +48,7 @@ function App() {
       let attempts = 0;
       pollIntervalRef.current = setInterval(async () => {
         attempts++;
-        if (attempts > 30) {
+        if (attempts > 5) {
           cleanupPolling();
           setStatusMessage('等待超时 (无响应)');
           setStatusColor('orange');
