@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>一键睡觉关机警告</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <h1>一键睡觉关机警告</h1>
+
+    <div class="container">
+        <button class="shutdown-btn" onclick="triggerShutdown()">
+            🛑 关机 (10s)
+        </button>
+        <button class="warning-btn" onclick="sendWarning()">
+            ⚠️ 发送警告
+        </button>
+    </div>
+
+    <div class="status" id="statusMessage"></div>
+
+    <script>
+        const statusEl = document.getElementById('statusMessage');
+
+        let pollInterval;
+
+        async function triggerShutdown() {
+            if (!confirm('确定要关机吗？请确保你已经进行了警告且警告无效')) return;
+
+            statusEl.textContent = '正在关机...';
+            try {
+                const res = await fetch('/api/shutdown', { method: 'POST' });
+                const data = await res.json();
+                statusEl.textContent = data.message || '关机命令已发送。';
+            } catch (err) {
+                statusEl.textContent = '发送关机命令失败。';
+                console.error(err);
+            }
+        }
+
+        async function sendWarning() {
+            // Clear any existing poll
+            if (pollInterval) clearInterval(pollInterval);
+
+            statusEl.textContent = '正在发送警告...';
+            statusEl.className = 'status'; // Reset class
+
+            try {
+                const res = await fetch('/api/notify', { method: 'POST' });
+                const data = await res.json();
+                statusEl.textContent = data.message || '警告已发送，等待回复...';
+
+                // Start polling
+                let attempts = 0;
+                pollInterval = setInterval(async () => {
+                    attempts++;
+                    // Stop polling after 60 seconds (approx)
+                    if (attempts > 30) {
+                        clearInterval(pollInterval);
+                        statusEl.textContent = '等待超时 (无响应)';
+                        return;
+                    }
+
+                    try {
+                        const statusRes = await fetch('/api/status');
+                        const statusData = await statusRes.json();
+
+                        // We check if the status update is recent enough relative to our click? 
+                        // Simplified: just check the state.
+
+                        if (statusData.state === 'acknowledged') {
+                            statusEl.textContent = '✅对方已收到';
+                            statusEl.style.color = 'green';
+                            clearInterval(pollInterval);
+                        } else if (statusData.state === 'dismissed') {
+                            statusEl.textContent = '❌通知被关闭或忽略';
+                            statusEl.style.color = 'orange';
+                            clearInterval(pollInterval);
+                        } else if (statusData.state === 'timeout') {
+                            statusEl.textContent = '⌛通知超时';
+                            clearInterval(pollInterval);
+                        }
+                    } catch (e) {
+                        console.error('Status poll error:', e);
+                    }
+                }, 2000);
+
+            } catch (err) {
+                statusEl.textContent = '发送警告失败。';
+                console.error(err);
+            }
+        }
+    </script>
+</body>
+
+</html>
